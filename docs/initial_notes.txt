@@ -1,0 +1,25 @@
+connect to kri command:
+ssh ubuntu@192.168.1.146
+then enter "airacerucf" as the password
+
+kria ip on isreal's router = 192.168.1.146
+kria username = ubuntu
+ubuntu user pass = airacerucf 
+
+To connect to kri remotely message hakim for the tailscale machine share link
+
+Main Project Directive = interface vitis ai with a yolo model so that the kri system on module can run yolo via vitis ai infrencing from yolo. Vitis ai compiles and runs yolo infrence on the programable logic(pl) while the processing system(ps) runs the operating system so that the vehicle can drive within a f1 tenth racing environemnt using our sensors(intel realsense t265 & lidar module) in realtime
+
+Immediate Directives:
+make 1:1 copy of the existing vehcile
+supervise battery charging from 29% to nominal %
+
+
+Immediate Directive Deadline = Sunday 10/25
+Main Project Directive Deadline = Saturday 11/07
+
+ros2 nodes that currently work:
+
+follow_the_gap2 
+yolo_detection
+autonomy_core
