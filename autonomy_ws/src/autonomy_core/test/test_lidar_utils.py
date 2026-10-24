@@ -45,3 +45,22 @@ def test_index_to_steering_left_is_positive_and_clamped():
         90, np.radians(-45.0), ANGLE_INC, max_steer=0.2, gain=0.5)
     assert steer > 0.0
     assert steer <= 0.2 + 1e-9
+
+
+def test_smooth_preserves_constant_ranges_at_scan_edges():
+    """Filtering should not turn clear scan boundaries into close obstacles."""
+    ranges = np.full(10, 10.0)
+
+    smoothed = lidar_utils.smooth(ranges, 3)
+
+    assert np.array_equal(smoothed, ranges)
+
+
+def test_smooth_handles_windows_larger_than_scan():
+    """A smoothing window wider than the scan still returns one value per beam."""
+    ranges = np.array([1.0, 3.0])
+
+    smoothed = lidar_utils.smooth(ranges, 5)
+
+    assert smoothed.shape == ranges.shape
+    assert np.all(np.isfinite(smoothed))

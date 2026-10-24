@@ -1,0 +1,33 @@
+follow_the_gap_crude_node: #has to match the node name
+  ros__parameters:
+    # Forward field of view actually used by the planner (degrees). The Hokuyo
+    # sweeps ~270 deg; we only steer from the front portion.
+    fov_degrees: 180.0
+
+    # Index-based tunables. These are measured in scan beams and are evaluated
+    # AFTER the FOV crop, so they depend on the LiDAR resolution and on
+    # fov_degrees. Re-tune them if either changes.
+    bubble_radius_far: 60
+    bubble_radius_near: 100
+    
+    #bubble_radius: 80
+    preprocess_conv_size: 3
+    safe_threshold: 30
+    best_point_conv_size: 200
+    min_clearance=10.0 
+    max_lidar_dist: 10.0
+
+    # Steering: bearing-to-steering gain and the mechanical limit (radians).
+    steering_gain: 0.8
+    max_steer: 0.349066          # 20 deg
+
+    # Speed banding by steering magnitude (radians / metres-per-second).
+    #straights_steering_angle: 0.1396  # 8 deg
+    straights_steering_angle: 0.10472  # 6 deg
+    #fast_steering_angle: 0.0698       # 4 deg
+    fast_steering_angle: 0.0542      # 3.1 deg
+    corners_speed: 1.5
+    straights_speed: 2.5
+    fast_speed: 3.0
+
+    status_interval: 0.5  # seconds between terminal status messages

@@ -1,0 +1,16 @@
+# bubble_radius is in metres; max_steer is in radians.
+follow_the_gap_2_node:
+  ros__parameters:
+    bubble_radius: 0.4
+    preprocess_conv_size: 3
+    max_lidar_range: 5.0
+    speed_min: 1.0
+    speed_max: 2.8
+    steering_gain: 0.7
+    prev_steering_angle: 0.0
+    count: 0.0
+    max_steer: 0.60
+    scan_topic: /scan
+    drive_topic: /drive
+    frame_id: base_link
+    status_interval: 0.5

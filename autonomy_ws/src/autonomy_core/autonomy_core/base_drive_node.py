@@ -24,6 +24,7 @@ from nav_msgs.msg import Odometry
 import numpy as np
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import Image
 
 # Parameters every drive node gets for free. A subclass' DEFAULT_PARAMS is
 # merged on top of these and may override them.
@@ -31,6 +32,8 @@ BASE_DEFAULTS = {
     'scan_topic': '/scan',
     'drive_topic': '/drive',
     'odom_topic': '/odom',
+    'image_topic': '/camera/camera/color/image_raw',
+    'drive_mask' : '/yolo/drivable_mask',
     'frame_id': 'base_link',
     'status_interval': 0.5,  # seconds between terminal status messages
 }
@@ -39,7 +42,7 @@ BASE_DEFAULTS = {
 class BaseDriveNode(Node):
     """Base ROS node wiring sensors to drive output for a reactive planner."""
 
-    def __init__(self, node_name, default_params=None, uses_odom=False):
+    def __init__(self, node_name, default_params=None, uses_odom=False, uses_camera=False, uses_lidar=True):
         """
         Set up parameters, publishers, and subscribers.
 
@@ -64,10 +67,9 @@ class BaseDriveNode(Node):
         self.last_status_time_ns = 0
 
         # Standard interface: subscribe to the LiDAR, publish drive commands.
-        self.scan_sub = self.create_subscription(
-            LaserScan, self.params.scan_topic, self.scan_callback, 10)
-        self.drive_pub = self.create_publisher(
-            AckermannDriveStamped, self.params.drive_topic, 10)
+        if uses_lidar:
+            self.scan_sub = self.create_subscription(
+                LaserScan, self.params.scan_topic, self.scan_callback, 10)
 
         # Odometry is optional: only algorithms that need pose/velocity ask for
         # it (e.g. pure pursuit). Reactive gap-followers leave it off.
@@ -76,6 +78,18 @@ class BaseDriveNode(Node):
             self.odom_sub = self.create_subscription(
                 Odometry, self.params.odom_topic, self.odom_callback, 10)
 
+        self.get_logger().info(f'{node_name} has been initialized')
+
+        if uses_camera:
+            self.image_sub = self.create_subscription(
+               Image, self.params.image_topic, self.image_callback, 10)
+            
+            self.image_sub= self.create_subscription(
+                Image, self.params.drive_mask, self.mask_callback, 10
+            )
+
+        self.drive_pub = self.create_publisher(
+            AckermannDriveStamped, self.params.drive_topic, 10)
         self.get_logger().info(f'{node_name} has been initialized')
 
     def _load_params(self, defaults):
@@ -89,6 +103,22 @@ class BaseDriveNode(Node):
         """Cache the most recent odometry message for subclasses to read."""
         self.latest_odom = odom_msg
 
+    def image_callback(self, image_msg):
+        self.latest_image=image_msg
+
+
+    def mask_callback(self, mask_msg):
+        self.latest_mask=mask_msg
+        result = self.compute_drive(mask_msg)
+
+        if result is None:
+            self.publish_stop()
+            return
+
+        steering_angle, speed = result
+        self.publish_drive(steering_angle, speed)
+        self._log_status(speed, steering_angle)
+        
     def scan_callback(self, scan_msg):
         """Validate the scan, dispatch to :meth:`compute_drive`, and publish."""
         ranges = np.array(scan_msg.ranges)

@@ -52,12 +52,19 @@ def smooth(ranges, window):
     Return a moving-average smoothed copy of ``ranges``.
 
     A small window suppresses single-beam noise without blurring real gaps.
-    ``window`` of 1 (or less) returns the input unchanged.
+    Edge values are extended while filtering so scan boundaries are not
+    artificially shortened. ``window`` of 1 (or less) returns the input
+    unchanged.
     """
-    if window <= 1:
-        return np.array(ranges, dtype=float)
-    kernel = np.ones(window)
-    return np.convolve(ranges, kernel, 'same') / window
+    ranges = np.asarray(ranges, dtype=float)
+    if window <= 1 or ranges.size == 0:
+        return ranges.copy()
+
+    left = (window - 1) // 2
+    right = window - 1 - left
+    padded = np.pad(ranges, (left, right), mode='edge')
+    kernel = np.ones(window) / window
+    return np.convolve(padded, kernel, 'valid')
 
 
 def clip_ranges(ranges, max_dist):
@@ -71,8 +78,8 @@ def clip_ranges(ranges, max_dist):
     return np.clip(ranges, 0.0, max_dist)
 
 
-def index_to_steering(index, angle_of_first, angle_increment, max_steer,
-                      gain=0.5):
+def index_to_steering(index, angle_of_first, angle_increment, max_steer, gain=1.25):
+                      #gain=0.5):
     """
     Convert a beam index into a steering angle command.
 

@@ -7,22 +7,45 @@ follow_the_gap_node:
     # Index-based tunables. These are measured in scan beams and are evaluated
     # AFTER the FOV crop, so they depend on the LiDAR resolution and on
     # fov_degrees. Re-tune them if either changes.
-    bubble_radius: 60
     preprocess_conv_size: 3
     safe_threshold: 30
-    best_point_conv_size: 200
+    best_point_conv_size: 40
+
+    # Geometry in metres; confirm these against the physical vehicle.
+    # Estimated actual wheel angle / commanded angle from the moving bag segment.
+    # Does not change the servo calibration or increase the command limit.
+    min_drive_speed: 0.6  # provisional minimum that overcomes the motor deadband
+    emergency_distance: 0.30  # hard stop directly ahead within the vehicle width
+    steering_response: 0.5
+    vehicle_length: 0.568
+    lidar_offset: 0.27
+    disparity_threshold: 0.3
+    lookahead_distance: 1.0
+    path_horizon: 2.0
+    max_acceleration: 0.5
+    max_lateral_acceleration: 1.0
+    vehicle_width: 0.296
+    safety_margin: 0.05
+    wheelbase: 0.324
+    min_gap_distance: 0.60
+    # Additional stand-off for the front-mounted LiDAR with no bumper.
+    # The swept rectangular footprint and safety_margin remain separate.
+    stop_distance: 0.15
+    reaction_time: 0.30           # seconds, sensing + actuation allowance
+    braking_deceleration: 2.0    # m/s²; must not exceed measured braking ability
 
     max_lidar_dist: 10.0
 
-    # Steering: bearing-to-steering gain and the mechanical limit (radians).
-    steering_gain: 0.5
+    # Mechanical steering limit (radians).
     max_steer: 0.349066          # 20 deg
 
     # Speed banding by steering magnitude (radians / metres-per-second).
-    straights_steering_angle: 0.1396  # 8 deg
-    fast_steering_angle: 0.0698       # 4 deg
-    corners_speed: 1.5
-    straights_speed: 2.5
-    fast_speed: 4.0
+    #straights_steering_angle: 0.1396  # 8 deg
+    straights_steering_angle: 0.10472  # 6 deg
+    #fast_steering_angle: 0.0698       # 4 deg
+    fast_steering_angle: 0.0542      # 3.1 deg
+    corners_speed: 0.8
+    straights_speed: 1.0
+    fast_speed: 1.2
 
     status_interval: 0.5  # seconds between terminal status messages
