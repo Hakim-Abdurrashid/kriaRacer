@@ -1,5 +1,13 @@
 # Blaze Racer
 
+## TODO
+
+1. Update KR260 firmware from version 1.02 to 1.07
+2. Solder broken lidar wire
+3. Supervise charging of the battery in the lipo fire bag
+
+---
+
 A ROS 2 software stack for a small-scale autonomous racing platform. The repository is split into two independent ROS 2 workspaces: a hardware-facing **subsystem workspace** that brings up all drivers and teleoperation, and an **autonomy workspace** that houses the autonomous driving algorithms.
 
 >**Note that the stack was tailored to run on Ubuntu 20.04**
