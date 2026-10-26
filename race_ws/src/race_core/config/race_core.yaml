@@ -1,0 +1,108 @@
+# race_core parameters (RACE_PLAN.md §5). follow_gap.* mirror blaze_racer follow_the_gap_2.
+# Runtime tuning without a restart:  ros2 param set /race_core speed_scale 0.6
+race_core:
+  ros__parameters:
+    mode: reactive             # reactive (follow-the-gap only) | race (map + raceline + fallback)
+    map_yaml: ""               # race-day map from slam_toolbox (map_saver yaml)
+    raceline_csv: ""           # from make_raceline.py (raceline.csv or centerline.csv)
+    raceline_direction: auto   # auto: flip the line if the car faces the other way when localized
+    scan_topic: /scan
+    odom_topic: /odometry/filtered   # robot_localization EKF (state_estimation.launch.py)
+    joy_topic: /joy
+    drive_topic: /drive        # goes through ackermann_mux (teleop LB overrides)
+    frame_id: base_link
+    scan_timeout: 0.15         # s without a scan -> stop
+    deskew: true               # correct each beam for the car's motion during the ~19 ms scan
+    odom_timeout: 0.2          # s without odometry -> leave GB_TRACK
+    speed_scale: 0.5           # x raceline speed profile (100% = friction limit at mu used for planning)
+    reactive_speed_scale: 1.0  # x follow-the-gap speeds
+    require_deadman: true      # drive only while the joystick deadman is held
+    deadman_button: 5          # RB (8BitDo Ultimate 2C, 2.4G dongle, XInput layout)
+    reset_button: 0            # A: hand-reset re-localization
+    joy_timeout: 0.3
+    laser_x: 0.27              # must match the base_link->laser static TF in subsystem_stack
+    laser_y: 0.0
+    laser_yaw: 0.0
+    car_length: 0.50
+    sectors: [0.0, 0.0, 1.0]   # [s_start, s_end, factor, ...]: slow single corners (see lap_report.py)
+    init_x: 0.0                # start pose = where slam_toolbox started the map
+    init_y: 0.0
+    init_yaw: 0.0
+
+    follow_gap:
+      bubble_radius: 0.4
+      preprocess_conv_size: 3
+      max_lidar_range: 5.0
+      speed_min: 1.0
+      speed_max: 2.8
+      steering_gain: 0.7
+      max_steer: 0.60
+      disparity_threshold: 0.7
+      vehicle_width: 0.31
+      disparity_margin: 0.30
+      medium_speed: 2.2
+      sharp_speed: 1.5
+      narrow_gap_speed: 1.5
+
+    pf:
+      particles: 1000
+      beams: 108
+      threads: 2
+      sigma_hit: 0.08
+      squash: 0.4
+      alpha_trans: 0.15
+      alpha_rot_trans: 0.10
+      alpha_rot: 0.15
+      slip_gain: 2.0
+
+    loc:
+      score_good: 0.65         # fraction of beams within 0.15 m of a mapped wall
+      score_lost: 0.40
+      good_scans: 12
+      lost_scans: 8
+      max_spread: 0.25
+      max_lateral: 0.8         # m off the raceline -> REACTIVE
+
+    pp:
+      wheelbase: 0.33
+      lookahead_base: 0.25
+      lookahead_time: 0.15
+      lookahead_min: 0.5
+      lookahead_max: 2.0
+      delay: 0.07
+      max_steer_left: 0.40
+      max_steer_right: 0.40
+      speed_preview: 0.25
+      lat_err_slow_start: 0.15
+      lat_err_slow_gain: 2.0
+      min_speed: 0.6
+
+    aeb:
+      enable: true
+      ttc: 0.30
+      min_speed: 0.8
+      half_width: 0.16
+      margin: 0.01
+      front_offset: 0.45
+      hold: 0.4
+      ttc_hard: 0.12           # on the raceline: walls only trigger below this (planner keeps margin)
+      foreign_dist: 0.15       # m; points farther than this from mapped walls are obstacles
+
+    trail:
+      enable: true
+      gap: 0.8
+      time_gap: 0.25
+      kp: 1.2
+      min_gap: 0.35
+      lane_half_width: 0.45
+
+    overtake:
+      mode: none               # none | spline (passes slow cars in sim, 0 collisions) | reactive (fails on narrow tracks)
+      max_speed_ratio: 0.8
+      speed_cap: 2.5
+      trail_time: 1.0
+      clearance: 0.15          # spline: side-to-side gap to the opponent
+      wall_margin: 0.10        # spline: our side to the wall
+      ramp_in: 2.0
+      ramp_out: 2.0
+      hold_after: 0.8

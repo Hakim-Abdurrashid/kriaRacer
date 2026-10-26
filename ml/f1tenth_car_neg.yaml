@@ -1,0 +1,8 @@
+# f1tenth_car + background frames from our own D435i (July bags, no cars): teaches the detector that
+# orange ducts, carpet, walls and motion blur are not cars. Held-out July frames: july_neg/heldout.
+path: /home/claude/race/datasets
+train: [f1tenth_car/train/images, july_neg/train/images]
+val: f1tenth_car/val/images
+test: f1tenth_car/test/images
+names:
+  0: car

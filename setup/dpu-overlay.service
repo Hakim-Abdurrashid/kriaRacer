@@ -1,0 +1,15 @@
+# Loads the DPU-PYNQ B4096 overlay into the PL at boot so VART (dpu_detector) finds the DPU without
+# Jupyter or a Python process. Installed by install_dpu_vai35.sh. Check: journalctl -u dpu-overlay
+[Unit]
+Description=Load the DPU (B4096) overlay into the programmable logic
+After=dfx-mgr.service
+Wants=dfx-mgr.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=180
+ExecStart=/bin/bash -c 'source /etc/pynq_venv.sh && python3 /usr/local/bin/load_dpu_overlay.py'
+
+[Install]
+WantedBy=multi-user.target

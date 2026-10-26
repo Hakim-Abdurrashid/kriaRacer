@@ -1,0 +1,7 @@
+race_ws/build/
+race_ws/install/
+race_ws/log/
+data/
+logs/
+__pycache__/
+*.pyc
