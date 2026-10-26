@@ -1,6 +1,6 @@
 # Test Day Runbook: KR260 in the car (first written for Sunday 2026-10-25)
 
-> **Status 2026-10-26:** §0 (bench bring-up) is done on the KR260; details and open items are in `KR260_STATUS.md`. Before the track: solder the LiDAR wire, then start at §1. Claude runs on the RTX box (`ssh claude@100.105.87.85`, `tmux attach -t race`) and reaches the car with `ssh kr260`.
+> **Status 2026-10-26:** §0 (bench bring-up) is done on the KR260; details and open items are in `KR260_STATUS.md`. Final checks the same evening (joystick chain on a virtual pad, full race load, mapping, planner and sim) passed; two joystick fixes and a `race.sh check` fix came out of them. Before the track: solder the LiDAR wire, then start at §1. Claude runs on the RTX box (`ssh claude@100.105.87.85`, `tmux attach -t race`) and reaches the car with `ssh kr260`.
 
 This is the step-by-step for the first live session on the KR260. Each step lists the command, what you should see, and what to do if you don't. Do the steps in order; stop and tell Claude at the first failure (paste the terminal output).
 
@@ -13,7 +13,7 @@ The goal for today, in priority order:
 5. First autonomous laps on the raceline at 40%, then 50–60% if they are clean.
 6. The DPU detector running on the car's camera while driving; frames of a second car if one is available.
 
-**Joystick:** 8BitDo Ultimate 2C on its **2.4G dongle** (XInput mode). Before driving, run `ros2 topic echo /joy --field buttons` with bringup up: holding LB, RB and pressing A must set indices 4, 5 and 0.
+**Joystick:** 8BitDo Ultimate 2C on its **2.4G dongle** (XInput mode). The Kria kernel's xpad driver does not know this dongle (USB ID `2dc8:310a`). A udev rule installed on 10/26 (`setup/70-8bitdo-xpad.rules`) hands it to xpad when it is plugged in, so `/dev/input/js0` must appear. Before driving, run `ros2 topic echo /joy --field buttons` with bringup up: holding LB, RB and pressing A must set indices 4, 5 and 0. The chain behind the buttons was tested on 10/26 with a virtual Xbox-layout pad (LB drives teleop, RB engages race_core, releasing RB stops the car); only the real pad itself is untested.
 
 - **Hold LB:** you drive (teleop always wins).
 - **Hold RB:** race_core drives. Release RB and the car stops; this is the deadman.
@@ -143,7 +143,7 @@ cd ~/2x1_w && ./race.sh check
 |---|---|---|
 | /scan | ~40 Hz | Hokuyo IP/cable; `nmcli con up hokuyo` |
 | /odom | ~50 Hz | VESC on /dev/ttyACM0? `dialout` group (log out/in) |
-| /joy | ~20 Hz while a button is held | 8BitDo on the 2.4G dongle (not Bluetooth); `ls /dev/input/js0` |
+| /joy | ~20 Hz while a button is held | 8BitDo on the 2.4G dongle (not Bluetooth); `ls /dev/input/js0`. If missing: `lsusb \| grep 2dc8` and `cat /sys/bus/usb/drivers/xpad/new_id` (must list `2dc8 310a ff`), then replug the dongle |
 | /camera/camera/imu | ~200 Hz | USB 3 port; `rs-enumerate-devices` |
 | /odometry/filtered | ~100 Hz | needs /odom and imu |
 

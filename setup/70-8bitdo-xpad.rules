@@ -1,0 +1,6 @@
+# 8BitDo Ultimate 2C on its 2.4G dongle (2dc8:310a) speaks the Xbox 360 (XInput) protocol, but the Kria's
+# 5.15 kernel xpad has no Xbox 360-type match for vendor 2dc8 (upstream added 310a in Oct 2024), so the pad
+# gets no driver and no /dev/input/js0. Register the plugged-in 8BitDo product ID with xpad, for its
+# vendor-specific (XInput) interfaces only; a pad in another mode (HID) keeps its HID driver.
+# Install:  sudo install -m 644 70-8bitdo-xpad.rules /etc/udev/rules.d/ && sudo udevadm control --reload
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="2dc8", RUN+="/bin/sh -c '/sbin/modprobe xpad; grep -qs ^2dc8.$attr{idProduct} /sys/bus/usb/drivers/xpad/new_id || echo 2dc8 $attr{idProduct} ff > /sys/bus/usb/drivers/xpad/new_id'"

@@ -36,23 +36,28 @@ source "$W/race_ws/install/setup.bash"
 set -u
 cmd="${1:-help}"; shift || true
 
-hz() {  # topic, seconds -> average rate
-  timeout "${2:-4}" ros2 topic hz "$1" 2>/dev/null | grep -m1 -oE 'average rate: [0-9.]+' || echo "NO DATA"
-}
-
 case "$cmd" in
   check)
     ros2 daemon start >/dev/null 2>&1 || true   # a cold daemon makes the first hz windows read NO DATA
-    for t in /scan /odom /joy /camera/camera/imu /odometry/filtered /camera/camera/color/image_raw; do
-      printf '%-36s %s\n' "$t" "$(hz $t 5)"
+    # All probes at once, 25 s: under the full race load (KR260, 10/26) each ros2 CLI needs 6-15 s just to
+    # start, and one 5 s probe after another read NO DATA for every topic. The color stream is probed through
+    # its camera_info (one per frame): Python falls behind deserializing the images and under-reads them.
+    topics=(/scan /odom /joy /camera/camera/imu /odometry/filtered /camera/camera/color/camera_info)
+    tmp=$(mktemp -d)
+    for i in "${!topics[@]}"; do timeout 25 ros2 topic hz "${topics[$i]}" > "$tmp/$i" 2>/dev/null & done
+    wait
+    for i in "${!topics[@]}"; do
+      r=$(grep -oE 'average rate: [0-9.]+' "$tmp/$i" | tail -1) || true
+      printf '%-36s %s\n' "${topics[$i]}" "${r:-NO DATA}"
     done
+    rm -rf "$tmp"
     dpu=$(systemctl is-active dpu-overlay 2>/dev/null) || true
     printf '%-36s %s\n' "DPU overlay service" "${dpu:-n/a}"
     # KV260: thermal_zone0; KR260: no thermal zone, the SoC sensors are the 'ams' hwmon (hottest of them)
     temps=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || \
             for h in /sys/class/hwmon/hwmon*; do [[ "$(cat "$h/name")" != ams ]] || cat "$h"/temp*_input; done)
     printf '%-36s %s C\n' "SoC temperature" "$(echo "$temps" | awk 'NF {if ($1 > m) m = $1} END {printf "%.1f", m/1000}')"
-    echo "expected: /scan ~40, /odom ~50, /joy ~20 (button held), imu ~200, EKF ~100, color ~30 Hz"
+    echo "expected: /scan ~40, /odom ~50, /joy ~20 (pad connected), imu ~200, EKF ~100, color camera_info ~30 Hz"
     ;;
   bringup)
     exec ros2 launch subsystem_stack bringup_launch.py ;;
