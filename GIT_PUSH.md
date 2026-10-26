@@ -4,7 +4,7 @@ Optional. Claude did not create a git repository or commit anything without your
 
 `.gitignore` already excludes build output, `data/` (July camera frames) and `logs/`.
 
-**On the KV260, push to a new branch of the private kriaRacer repo.** Git asks for your GitHub username and a personal access token.
+**On the KV260, push to a new branch of the kriaRacer repo (public: never commit keys or passwords).** Git asks for your GitHub username and a personal access token.
 
 ```
 cd ~/2x1_w

@@ -10,6 +10,7 @@
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "run with sudo"; exit 1; }
 BOARD="${BOARD:-KV260}"
+SETUP_DIR="$(dirname "$(readlink -f "$0")")"   # before the cd below, $0 may be a relative path
 WORK=/opt/kria-dpu-setup
 mkdir -p "$WORK" && cd "$WORK"
 log() { printf '\n==== %s  %s\n' "$(date +%T)" "$*"; }
@@ -20,13 +21,18 @@ log "Backup XRT 2.13 user-space libraries and /etc/profile.d"
 log "1. Kria-PYNQ (BOARD=$BOARD)"
 if [[ ! -d /usr/local/share/pynq-venv ]]; then
   [[ -d Kria-PYNQ ]] || git clone https://github.com/Xilinx/Kria-PYNQ.git
-  ( cd Kria-PYNQ && bash install.sh -b "$BOARD" )
+  # install.sh's last line reads eth0's IP for a Jupyter hint and fails under its set -e when eth0
+  # has none (KR260: eth0 = Hokuyo port); accept that if PYNQ + DPU-PYNQ did get installed.
+  ( cd Kria-PYNQ && bash install.sh -b "$BOARD" ) || \
+    [[ -d /usr/local/share/pynq-venv/lib/python3.10/site-packages/pynq_dpu ]]
 fi
 
 log "1b. Keep the PYNQ venv out of every login shell"
 # Kria-PYNQ's /etc/profile.d/pynq_venv.sh activates its venv (and inserts a dtbo) for ALL login
 # shells, which breaks ROS / user Python. Keep it as an opt-in file instead.
 if [[ -f /etc/profile.d/pynq_venv.sh ]]; then mv /etc/profile.d/pynq_venv.sh /etc/pynq_venv.sh; fi
+# PYNQ's boot-time statefile reset sources the old path
+sed -i 's#/etc/profile.d/pynq_venv.sh#/etc/pynq_venv.sh#' /usr/local/bin/clear_pl_statefile.sh 2>/dev/null || true
 PYNQ_ENV=/etc/pynq_venv.sh
 
 log "2. Vitis AI 3.5 runtime + XRT 2.15 libs"
@@ -46,16 +52,25 @@ log "4. Patches from AMD's script"
 grep -q "LD_LIBRARY_PATH=/usr/lib" $PYNQ_ENV || echo "export LD_LIBRARY_PATH=/usr/lib" >> $PYNQ_ENV
 [[ -f /usr/bin/xdputil ]] && sed -i "s/\/usr\/bin\///g" /usr/bin/xdputil || true
 echo /usr/lib/python3.10/site-packages > /usr/lib/python3/dist-packages/vart.pth
+# The VAI runtime debs leave vart.conf on /run/media/mmcblk0p1/dpu.xclbin; DpuOverlay copies the
+# firmware to /usr/lib/dpu.xclbin but only rewrites vart.conf when a model is loaded from Python.
+echo "firmware: /usr/lib/dpu.xclbin" > /etc/vart.conf
 
 log "5. Cleanup of Kria-PYNQ side effects"
 # Jupyter listens on :9090 with the default password 'xilinx' - not on a race car.
 systemctl disable --now jupyter.service 2>/dev/null || true
+# PYNQ's clear_pl_statefile.service Requires= jupyter, which started it anyway at boot (and on the
+# KR260 it timed out after 90 s). A drop-in cannot remove Requires=, so override the whole unit
+# without the jupyter lines, then mask jupyter.
+grep -v jupyter /lib/systemd/system/clear_pl_statefile.service > /etc/systemd/system/clear_pl_statefile.service
+systemctl daemon-reload && systemctl reenable clear_pl_statefile.service
+systemctl mask jupyter.service
 # needrestart was switched to auto-restart services after upgrades; put it back to interactive.
 sed -i "s/^\$nrconf{restart} = 'a';/#\$nrconf{restart} = 'i';/" /etc/needrestart/needrestart.conf || true
 
 log "6. Load the DPU overlay at every boot (dpu-overlay.service)"
-install -m 644 "$(dirname "$(readlink -f "$0")")/load_dpu_overlay.py" /usr/local/bin/load_dpu_overlay.py
-install -m 644 "$(dirname "$(readlink -f "$0")")/dpu-overlay.service" /etc/systemd/system/dpu-overlay.service
+install -m 644 "$SETUP_DIR/load_dpu_overlay.py" /usr/local/bin/load_dpu_overlay.py
+install -m 644 "$SETUP_DIR/dpu-overlay.service" /etc/systemd/system/dpu-overlay.service
 systemctl daemon-reload
 systemctl enable dpu-overlay.service
 systemctl restart dpu-overlay.service && journalctl -u dpu-overlay -n 3 --no-pager || true

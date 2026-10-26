@@ -42,11 +42,16 @@ hz() {  # topic, seconds -> average rate
 
 case "$cmd" in
   check)
+    ros2 daemon start >/dev/null 2>&1 || true   # a cold daemon makes the first hz windows read NO DATA
     for t in /scan /odom /joy /camera/camera/imu /odometry/filtered /camera/camera/color/image_raw; do
-      printf '%-36s %s\n' "$t" "$(hz $t 4)"
+      printf '%-36s %s\n' "$t" "$(hz $t 5)"
     done
-    printf '%-36s %s\n' "DPU overlay service" "$(systemctl is-active dpu-overlay 2>/dev/null || echo n/a)"
-    printf '%-36s %s C\n' "SoC temperature" "$(awk '{printf "%.1f", $1/1000}' /sys/class/thermal/thermal_zone0/temp 2>/dev/null)"
+    dpu=$(systemctl is-active dpu-overlay 2>/dev/null) || true
+    printf '%-36s %s\n' "DPU overlay service" "${dpu:-n/a}"
+    # KV260: thermal_zone0; KR260: no thermal zone, the SoC sensors are the 'ams' hwmon (hottest of them)
+    temps=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || \
+            for h in /sys/class/hwmon/hwmon*; do [[ "$(cat "$h/name")" != ams ]] || cat "$h"/temp*_input; done)
+    printf '%-36s %s C\n' "SoC temperature" "$(echo "$temps" | awk 'NF {if ($1 > m) m = $1} END {printf "%.1f", m/1000}')"
     echo "expected: /scan ~40, /odom ~50, /joy ~20 (button held), imu ~200, EKF ~100, color ~30 Hz"
     ;;
   bringup)

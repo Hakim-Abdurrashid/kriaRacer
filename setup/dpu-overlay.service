@@ -2,7 +2,7 @@
 # Jupyter or a Python process. Installed by install_dpu_vai35.sh. Check: journalctl -u dpu-overlay
 [Unit]
 Description=Load the DPU (B4096) overlay into the programmable logic
-After=dfx-mgr.service
+After=dfx-mgr.service clear_pl_statefile.service
 Wants=dfx-mgr.service
 
 [Service]
