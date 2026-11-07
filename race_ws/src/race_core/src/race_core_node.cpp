@@ -5,6 +5,10 @@
 //   race      particle filter on the race-day map + pure pursuit on the raceline (GB_TRACK), with
 //             trailing behind an opponent on our line, and follow-the-gap (REACTIVE) whenever
 //             localization is not healthy (start-up, after a hand reset, lost)
+// drive_mode (race mode, live): raceline (above) | ftg (always follow-the-gap, still localizing and
+//             timing laps on the map, to compare the two on the same track)
+// reactive_planner: iv2026 (blaze_racer iv2026 follow_the_gap, the team's tested node, default) |
+//             ftg2 (port of follow_the_gap_2)
 // Always on: deadman (joystick button held, unless require_deadman is false), scan and odometry
 // watchdogs, emergency braking on time-to-collision in the swept corridor.
 //
@@ -32,6 +36,7 @@
 #include "nav_msgs/msg/path.hpp"
 #include "race_core/controller.hpp"
 #include "race_core/follow_gap.hpp"
+#include "race_core/follow_gap_iv.hpp"
 #include "race_core/geometry.hpp"
 #include "race_core/occupancy_map.hpp"
 #include "race_core/opponent.hpp"
@@ -98,6 +103,7 @@ public:
   {
     declareParameters();
     follow_gap_ = std::make_unique<FollowGap>(fg_);
+    follow_gap_iv_ = std::make_unique<FollowGapIV>(fgiv_);
 
     drive_pub_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(drive_topic_, 10);
     telem_pub_ = create_publisher<std_msgs::msg::Float32MultiArray>("/race_core/telemetry", 10);
@@ -148,8 +154,16 @@ public:
     watchdog_ = create_wall_timer(std::chrono::milliseconds(20), [this]() {onWatchdog();});
     viz_timer_ = create_wall_timer(std::chrono::milliseconds(200), [this]() {publishViz();});
     last_scan_time_ = now();
-    RCLCPP_INFO(get_logger(), "race_core v1 up: mode=%s speed_scale=%.2f deadman=%s",
-      mode_.c_str(), speed_scale_, require_deadman_ ? "required" : "OFF");
+    RCLCPP_INFO(get_logger(), "race_core v1 up: mode=%s drive_mode=%s reactive=%s speed_scale=%.2f "
+      "reactive_speed_scale=%.2f trail=%s overtake=%s deadman=%s", mode_.c_str(), drive_mode_.c_str(),
+      reactive_planner_.c_str(), speed_scale_, reactive_speed_scale_, trail_enable_ ? "on" : "off",
+      overtake_mode_.c_str(), require_deadman_ ? "required" : "OFF");
+    if (reactive_planner_ == "iv2026") {
+      RCLCPP_INFO(get_logger(), "follow-the-gap iv2026: fov %.0f deg, bubble %d, steer gain %.2f max %.3f, "
+        "speed %.1f..%.1f m/s at %.1f..%.1f m front clearance (x%.2f)", fgiv_.fov_degrees,
+        fgiv_.bubble_radius, fgiv_.steering_gain, fgiv_.max_steer, fgiv_.distance_min_speed,
+        fgiv_.distance_max_speed, fgiv_.dist_min_speed, fgiv_.dist_max_speed, reactive_speed_scale_);
+    }
   }
 
 private:
@@ -157,6 +171,8 @@ private:
   void declareParameters()
   {
     mode_ = declare_parameter("mode", std::string("reactive"));
+    drive_mode_ = declare_parameter("drive_mode", std::string("raceline"));       // raceline | ftg
+    reactive_planner_ = declare_parameter("reactive_planner", std::string("iv2026"));  // iv2026 | ftg2
     declare_parameter("scan_topic", std::string("/scan"));
     declare_parameter("odom_topic", std::string("/odometry/filtered"));
     declare_parameter("joy_topic", std::string("/joy"));
@@ -180,6 +196,7 @@ private:
     laser_ = {declare_parameter("laser_x", 0.27), declare_parameter("laser_y", 0.0),
       declare_parameter("laser_yaw", 0.0)};
     car_length_ = declare_parameter("car_length", 0.50);
+    min_lap_time_ = declare_parameter("min_lap_time", 2.0);   // s, map lap timer debounce
     // per-sector speed factors on top of speed_scale: [s_start, s_end, factor, ...] (m along the
     // raceline, as printed by lap_report.py), e.g. slow one corner without slowing the whole lap
     setSectors(declare_parameter("sectors", std::vector<double>{}));
@@ -199,6 +216,34 @@ private:
     fg_.medium_speed = declare_parameter("follow_gap.medium_speed", fg_.medium_speed);
     fg_.sharp_speed = declare_parameter("follow_gap.sharp_speed", fg_.sharp_speed);
     fg_.narrow_gap_speed = declare_parameter("follow_gap.narrow_gap_speed", fg_.narrow_gap_speed);
+
+    // blaze_racer iv2026 follow_the_gap (race_core.launch.py copies the team's params.yaml in here)
+    fgiv_.fov_degrees = declare_parameter("ftg_iv.fov_degrees", fgiv_.fov_degrees);
+    fgiv_.bubble_radius = declare_parameter("ftg_iv.bubble_radius", fgiv_.bubble_radius);
+    fgiv_.preprocess_conv_size =
+      declare_parameter("ftg_iv.preprocess_conv_size", fgiv_.preprocess_conv_size);
+    fgiv_.safe_threshold = declare_parameter("ftg_iv.safe_threshold", fgiv_.safe_threshold);
+    fgiv_.best_point_conv_size =
+      declare_parameter("ftg_iv.best_point_conv_size", fgiv_.best_point_conv_size);
+    fgiv_.max_lidar_dist = declare_parameter("ftg_iv.max_lidar_dist", fgiv_.max_lidar_dist);
+    fgiv_.steering_gain = declare_parameter("ftg_iv.steering_gain", fgiv_.steering_gain);
+    fgiv_.max_steer = declare_parameter("ftg_iv.max_steer", fgiv_.max_steer);
+    fgiv_.straights_steering_angle =
+      declare_parameter("ftg_iv.straights_steering_angle", fgiv_.straights_steering_angle);
+    fgiv_.fast_steering_angle =
+      declare_parameter("ftg_iv.fast_steering_angle", fgiv_.fast_steering_angle);
+    fgiv_.corners_speed = declare_parameter("ftg_iv.corners_speed", fgiv_.corners_speed);
+    fgiv_.straights_speed = declare_parameter("ftg_iv.straights_speed", fgiv_.straights_speed);
+    fgiv_.fast_speed = declare_parameter("ftg_iv.fast_speed", fgiv_.fast_speed);
+    fgiv_.use_distance_speed =
+      declare_parameter("ftg_iv.use_distance_speed", fgiv_.use_distance_speed);
+    fgiv_.front_angle_width = declare_parameter("ftg_iv.front_angle_width", fgiv_.front_angle_width);
+    fgiv_.dist_min_speed = declare_parameter("ftg_iv.dist_min_speed", fgiv_.dist_min_speed);
+    fgiv_.dist_max_speed = declare_parameter("ftg_iv.dist_max_speed", fgiv_.dist_max_speed);
+    fgiv_.distance_min_speed =
+      declare_parameter("ftg_iv.distance_min_speed", fgiv_.distance_min_speed);
+    fgiv_.distance_max_speed =
+      declare_parameter("ftg_iv.distance_max_speed", fgiv_.distance_max_speed);
 
     pf_.particles = declare_parameter("pf.particles", pf_.particles);
     pf_beams_ = declare_parameter("pf.beams", 108);
@@ -247,6 +292,9 @@ private:
     aeb_.front_offset = declare_parameter("aeb.front_offset", aeb_.front_offset);
     aeb_hold_ = declare_parameter("aeb.hold", 0.4);
     aeb_ttc_hard_ = declare_parameter("aeb.ttc_hard", 0.12);       // s, any point, even on the raceline
+    // REACTIVE (follow-the-gap) brakes only this close: the team's FTG ran without emergency braking
+    // and steers around obstacles itself; a longer TTC there false-brakes at its 4.5 m/s
+    aeb_ttc_reactive_ = declare_parameter("aeb.ttc_reactive", 0.12);
     aeb_foreign_dist_ = declare_parameter("aeb.foreign_dist", 0.15);  // m from mapped walls
     aeb_.wheelbase = pp_.wheelbase;
 
@@ -283,6 +331,34 @@ private:
     for (const auto & p : ps) {
       const auto & n = p.get_name();
       if (n == "speed_scale") {speed_scale_ = p.as_double();}
+      else if (n == "drive_mode") {
+        if (p.as_string() != "raceline" && p.as_string() != "ftg") {
+          r.successful = false;
+          r.reason = "drive_mode is raceline or ftg";
+          return r;
+        }
+        drive_mode_ = p.as_string();
+      }
+      else if (n == "reactive_planner") {
+        if (p.as_string() != "iv2026" && p.as_string() != "ftg2") {
+          r.successful = false;
+          r.reason = "reactive_planner is iv2026 or ftg2";
+          return r;
+        }
+        reactive_planner_ = p.as_string();
+      }
+      else if (n == "aeb.ttc_reactive") {aeb_ttc_reactive_ = p.as_double();}
+      else if (n.rfind("ftg_iv.", 0) == 0) {
+        if (!setFtgIv(n.substr(7), p)) {
+          r.successful = false;
+          r.reason = "unknown or mistyped ftg_iv parameter " + n;
+          return r;
+        }
+        follow_gap_iv_ = std::make_unique<FollowGapIV>(fgiv_);
+      }
+      else if (n == "aeb.ttc_hard") {aeb_ttc_hard_ = p.as_double();}
+      else if (n == "pp.max_steer_left") {pp_.max_steer_left = p.as_double();}
+      else if (n == "pp.max_steer_right") {pp_.max_steer_right = p.as_double();}
       else if (n == "reactive_speed_scale") {reactive_speed_scale_ = p.as_double();}
       else if (n == "require_deadman") {require_deadman_ = p.as_bool();}
       else if (n == "pp.lookahead_base") {pp_.lookahead_base = p.as_double();}
@@ -303,6 +379,40 @@ private:
       RCLCPP_INFO(get_logger(), "param %s updated", n.c_str());
     }
     return r;
+  }
+
+  // Live tuning of the iv2026 follow-the-gap: ros2 param set /race_core ftg_iv.distance_max_speed 5.0
+  bool setFtgIv(const std::string & k, const rclcpp::Parameter & p)
+  {
+    const bool is_d = p.get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE;
+    const bool is_i = p.get_type() == rclcpp::ParameterType::PARAMETER_INTEGER;
+    const double d = is_d ? p.as_double() : (is_i ? static_cast<double>(p.as_int()) : 0.0);
+    auto num = [&](double & f) {if (is_d || is_i) {f = d; return true;} return false;};
+    auto integer = [&](int & f) {if (is_i) {f = static_cast<int>(p.as_int()); return true;} return false;};
+    if (k == "fov_degrees") {return num(fgiv_.fov_degrees);}
+    if (k == "bubble_radius") {return integer(fgiv_.bubble_radius);}
+    if (k == "preprocess_conv_size") {return integer(fgiv_.preprocess_conv_size);}
+    if (k == "safe_threshold") {return integer(fgiv_.safe_threshold);}
+    if (k == "best_point_conv_size") {return integer(fgiv_.best_point_conv_size);}
+    if (k == "max_lidar_dist") {return num(fgiv_.max_lidar_dist);}
+    if (k == "steering_gain") {return num(fgiv_.steering_gain);}
+    if (k == "max_steer") {return num(fgiv_.max_steer);}
+    if (k == "straights_steering_angle") {return num(fgiv_.straights_steering_angle);}
+    if (k == "fast_steering_angle") {return num(fgiv_.fast_steering_angle);}
+    if (k == "corners_speed") {return num(fgiv_.corners_speed);}
+    if (k == "straights_speed") {return num(fgiv_.straights_speed);}
+    if (k == "fast_speed") {return num(fgiv_.fast_speed);}
+    if (k == "use_distance_speed") {
+      if (p.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {return false;}
+      fgiv_.use_distance_speed = p.as_bool();
+      return true;
+    }
+    if (k == "front_angle_width") {return num(fgiv_.front_angle_width);}
+    if (k == "dist_min_speed") {return num(fgiv_.dist_min_speed);}
+    if (k == "dist_max_speed") {return num(fgiv_.dist_max_speed);}
+    if (k == "distance_min_speed") {return num(fgiv_.distance_min_speed);}
+    if (k == "distance_max_speed") {return num(fgiv_.distance_max_speed);}
+    return false;
   }
 
   void setSectors(const std::vector<double> & v)
@@ -431,6 +541,7 @@ private:
     odom_.push_back(s);
     while (odom_.size() > 2 && odom_.back().t - odom_.front().t > 2.0) {odom_.pop_front();}
     last_odom_wall_ = now();
+    headingLaps(s);
     if (lineFollowing()) {controlStep(s);}
   }
 
@@ -521,7 +632,8 @@ private:
     const double ttc_all = minTimeToCollision(aeb_pts_, v_now, last_steer_cmd_, aeb_);
     const bool tracking = on_map && lineFollowing();
     ttc_ = tracking ? minTimeToCollision(foreign_pts_, v_now, last_steer_cmd_, aeb_) : ttc_all;
-    const bool brake = ttc_ < aeb_.ttc || (tracking && ttc_all < aeb_ttc_hard_);
+    const bool brake = tracking ? (ttc_ < aeb_.ttc || ttc_all < aeb_ttc_hard_) :
+      ttc_all < aeb_ttc_reactive_;
     if (aeb_enable_ && brake && engaged()) {
       if (!aebActive()) {
         ++aeb_events_;
@@ -535,7 +647,10 @@ private:
 
     updateState();
     if (state_ == State::kReactive || (state_ == State::kOvertake && overtake_mode_ == "reactive")) {
-      const auto cmd = follow_gap_->compute(scan.ranges, scan.angle_min, scan.angle_increment);
+      const auto cmd = reactive_planner_ == "iv2026" ?
+        follow_gap_iv_->compute(scan.ranges, scan.angle_min, scan.angle_increment) :
+        follow_gap_->compute(scan.ranges, scan.angle_min, scan.angle_increment);
+      if (on_map && state_ == State::kReactive) {lapTiming(ego_s_);}   // laps also count on FTG
       if (cmd) {
         double v = cmd->speed * reactive_speed_scale_;
         if (state_ == State::kOvertake) {v = std::min(v, overtake_cap_);}
@@ -634,6 +749,7 @@ private:
       // Without odometry the filter cannot follow a moving car; hold the last estimate.
       if (++bad_count_ >= loc_lost_scans_ && localized_) {
         localized_ = false;
+        line_hint_ = -1;
         RCLCPP_WARN(get_logger(), "localization suspended: no odometry at scan time");
       }
       return;
@@ -669,6 +785,7 @@ private:
       RCLCPP_INFO(get_logger(), "localized (match %.2f, spread %.2f m)", score, spread);
     } else if (localized_ && bad_count_ >= loc_lost_scans_) {
       localized_ = false;
+      line_hint_ = -1;   // the car may be anywhere by the time it re-localizes: search the whole line
       RCLCPP_WARN(get_logger(), "LOCALIZATION LOST (match %.2f, spread %.2f m) -> REACTIVE", score,
         spread);
     }
@@ -702,7 +819,8 @@ private:
       const Projection pr = raceline_.project(pose.x, pose.y, line_hint_);
       lateral = pr.d;
       ego_s_ = pr.s;
-      if (std::fabs(lateral) <= loc_max_lateral_) {next = State::kTrack;}
+      line_hint_ = pr.index;
+      if (std::fabs(lateral) <= loc_max_lateral_ && drive_mode_ == "raceline") {next = State::kTrack;}
     }
     if (next == State::kTrack) {
       const auto & tr = tracker_.track();
@@ -825,11 +943,57 @@ private:
     publishDrive(out.steering, speed);
   }
 
+  // Lap counter without a map: on a closed loop each lap adds 2*pi of heading (D435i gyro via the
+  // EKF). Counts only while engaged and moving; restarts after 2 s without driving. Logs "TURN LAP".
+  void headingLaps(const OdomSample & o)
+  {
+    const bool driving = engaged() && std::fabs(o.v) > 0.3;
+    if (!driving) {
+      if (hl_active_ && (o.t - hl_last_drive_) > 2.0) {
+        if (hl_count_ > 0) {
+          RCLCPP_INFO(get_logger(), "TURN LAPS: %d laps, best %.2f s, mean %.2f s", hl_count_, hl_best_,
+            hl_sum_ / hl_count_);
+        }
+        hl_active_ = false;
+      }
+      hl_prev_t_ = o.t;
+      return;
+    }
+    if (!hl_active_) {
+      hl_active_ = true;
+      hl_yaw_ = 0.0;
+      hl_count_ = 0;
+      hl_best_ = 1e9;
+      hl_sum_ = 0.0;
+      hl_dist_ = 0.0;
+      hl_lap_start_ = o.t;
+      hl_prev_t_ = o.t;
+    }
+    const double dt = std::clamp(o.t - hl_prev_t_, 0.0, 0.1);
+    hl_prev_t_ = o.t;
+    hl_last_drive_ = o.t;
+    hl_yaw_ += o.wz * dt;
+    hl_dist_ += std::fabs(o.v) * dt;
+    if (std::fabs(hl_yaw_) >= 2.0 * M_PI * (hl_count_ + 1)) {
+      const double lap = o.t - hl_lap_start_;
+      ++hl_count_;
+      hl_best_ = std::min(hl_best_, lap);
+      hl_sum_ += lap;
+      last_turn_lap_ = lap;
+      RCLCPP_INFO(get_logger(), "TURN LAP %d: %.2f s (%s, %.1f m, mean %.2f m/s, best %.2f s)", hl_count_,
+        lap, hl_yaw_ > 0 ? "ccw" : "cw", hl_dist_, hl_dist_ / std::max(lap, 1e-3), hl_best_);
+      hl_lap_start_ = o.t;
+      hl_dist_ = 0.0;
+    }
+  }
+
   void lapTiming(double s)
   {
     const double L = raceline_.length();
     const double t = now().seconds();
-    if (have_last_s_ && last_s_ > 0.75 * L && s < 0.25 * L) {   // crossed s = 0 going forward
+    if (have_last_s_ && last_s_ > 0.75 * L && s < 0.25 * L &&   // crossed s = 0 going forward
+      (lap_start_ < 0 || t - lap_start_ > min_lap_time_))
+    {
       if (lap_start_ > 0) {
         last_lap_ = t - lap_start_;
         ++lap_count_;
@@ -1026,6 +1190,8 @@ private:
   // modules
   FollowGapParams fg_;
   std::unique_ptr<FollowGap> follow_gap_;
+  FollowGapIVParams fgiv_;
+  std::unique_ptr<FollowGapIV> follow_gap_iv_;
   OccupancyMap map_;
   PFParams pf_;
   std::unique_ptr<ParticleFilter> pf_filter_;
@@ -1057,12 +1223,12 @@ private:
 
   // parameters
   std::string mode_, drive_topic_, map_yaml_, raceline_csv_, raceline_direction_;
-  std::string map_frame_, odom_frame_, base_frame_, overtake_mode_;
+  std::string map_frame_, odom_frame_, base_frame_, overtake_mode_, drive_mode_, reactive_planner_;
   bool publish_tf_ = true, require_deadman_ = true, aeb_enable_ = true, trail_enable_ = true;
   bool deskew_ = true;
   double scan_timeout_ = 0.15, odom_timeout_ = 0.2, speed_scale_ = 0.5, reactive_speed_scale_ = 1.0;
   double joy_timeout_ = 0.3, car_length_ = 0.5, slip_gain_ = 2.0, aeb_hold_ = 0.4;
-  double aeb_ttc_hard_ = 0.12, aeb_foreign_dist_ = 0.15, ot_abort_margin_ = 0.08;
+  double aeb_ttc_hard_ = 0.12, aeb_foreign_dist_ = 0.15, ot_abort_margin_ = 0.08, aeb_ttc_reactive_ = 0.12;
   double ot_start_margin_ = 0.05, ot_boost_ = 0.15, ot_cooldown_ = 2.0;
   rclcpp::Time ot_abort_time_{0, 0, RCL_ROS_TIME};
   double init_sigma_xy_ = 0.3, init_sigma_yaw_ = 0.25, reset_sigma_xy_ = 0.5, reset_sigma_yaw_ = 0.35;
@@ -1087,6 +1253,10 @@ private:
   double last_steer_cmd_ = 0.0, last_speed_cmd_ = 0.0, ttc_ = 1e9, ego_s_ = 0.0, v_ref_ = 0.0;
   double last_s_ = 0.0, lap_start_ = -1.0, last_lap_ = 0.0, opp_gap_ = 1e9;
   double lookahead_[2] = {0.0, 0.0};
+  bool hl_active_ = false;
+  int hl_count_ = 0;
+  double hl_yaw_ = 0.0, hl_best_ = 1e9, hl_sum_ = 0.0, hl_dist_ = 0.0, hl_lap_start_ = 0.0;
+  double hl_prev_t_ = 0.0, hl_last_drive_ = 0.0, last_turn_lap_ = 0.0, min_lap_time_ = 2.0;
   rclcpp::Time last_dets_time_{0, 0, RCL_ROS_TIME};
   std::vector<std::array<float, 2>> cam_bearings_;
   bool opp_confirmed_ = false;

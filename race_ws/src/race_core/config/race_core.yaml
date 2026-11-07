@@ -3,6 +3,8 @@
 race_core:
   ros__parameters:
     mode: reactive             # reactive (follow-the-gap only) | race (map + raceline + fallback)
+    drive_mode: raceline       # race mode, live: raceline | ftg (follow-the-gap, still localizing + lap timing)
+    reactive_planner: iv2026   # iv2026 = blaze_racer iv2026 follow_the_gap (tested on the car 11/06) | ftg2
     map_yaml: ""               # race-day map from slam_toolbox (map_saver yaml)
     raceline_csv: ""           # from make_raceline.py (raceline.csv or centerline.csv)
     raceline_direction: auto   # auto: flip the line if the car faces the other way when localized
@@ -15,7 +17,7 @@ race_core:
     deskew: true               # correct each beam for the car's motion during the ~19 ms scan
     odom_timeout: 0.2          # s without odometry -> leave GB_TRACK
     speed_scale: 0.5           # x raceline speed profile (100% = friction limit at mu used for planning)
-    reactive_speed_scale: 1.0  # x follow-the-gap speeds
+    reactive_speed_scale: 1.0  # x follow-the-gap speeds (1.0 = the team's iv2026 speeds, 2.0-4.5 m/s)
     require_deadman: true      # drive only while the joystick deadman is held
     deadman_button: 5          # RB (8BitDo Ultimate 2C, 2.4G dongle, XInput layout)
     reset_button: 0            # A: hand-reset re-localization
@@ -29,7 +31,30 @@ race_core:
     init_y: 0.0
     init_yaw: 0.0
 
-    follow_gap:
+    # blaze_racer iv2026 follow_the_gap/config/params.yaml as run on 11/06. race_core.launch.py
+    # overwrites these from the installed params.yaml, so tuning that file tunes race_core too.
+    ftg_iv:
+      fov_degrees: 270.0
+      bubble_radius: 175
+      preprocess_conv_size: 3
+      safe_threshold: 30
+      best_point_conv_size: 200
+      max_lidar_dist: 10.0
+      steering_gain: 0.5
+      max_steer: 0.349066
+      straights_steering_angle: 0.1396
+      fast_steering_angle: 0.0698
+      corners_speed: 1.5
+      straights_speed: 7.0
+      fast_speed: 5.0
+      use_distance_speed: true
+      front_angle_width: 0.1745
+      dist_min_speed: 1.0
+      dist_max_speed: 5.0
+      distance_min_speed: 2.0
+      distance_max_speed: 4.5
+
+    follow_gap:                # ftg2 (reactive_planner: ftg2)
       bubble_radius: 0.4
       preprocess_conv_size: 3
       max_lidar_range: 5.0
@@ -70,8 +95,8 @@ race_core:
       lookahead_min: 0.5
       lookahead_max: 2.0
       delay: 0.07
-      max_steer_left: 0.40
-      max_steer_right: 0.40
+      max_steer_left: 0.50       # servo 0.07 at the iv2026 calibration (limit 0.05)
+      max_steer_right: 0.50      # servo 0.93 (limit 1.0); raceline planned at 0.40 leaves room to correct
       speed_preview: 0.25
       lat_err_slow_start: 0.15
       lat_err_slow_gain: 2.0
@@ -86,6 +111,7 @@ race_core:
       front_offset: 0.45
       hold: 0.4
       ttc_hard: 0.12           # on the raceline: walls only trigger below this (planner keeps margin)
+      ttc_reactive: 0.12       # follow-the-gap (REACTIVE): last resort only
       foreign_dist: 0.15       # m; points farther than this from mapped walls are obstacles
 
     trail:

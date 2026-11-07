@@ -2,15 +2,29 @@
 # One entry point for track sessions (RACE_PLAN.md §6.2, TEST_DAY.md). Run each long-lived command in
 # its own terminal (or tmux window):
 #
+# Drivers, servo calibration and follow-the-gap come from blaze_racer branch iv2026 (~/blaze_racer,
+# BLAZE=... to override); race_core runs the team's follow-the-gap (C++ port, same params.yaml) as its
+# REACTIVE mode.
+#
+#   ./race.sh up [det]                  start everything for follow-the-gap racing in tmux session "car"
+#                                       (bringup, ekf, joywatch, ftg; det = also the DPU car detector)
+#   ./race.sh down                      stop the tmux session cleanly
 #   ./race.sh check                     sensor rates, DPU, CPU temperature
-#   ./race.sh bringup                   drivers + joystick + ackermann_mux (blaze_racer subsystem_stack)
+#   ./race.sh bringup                   iv2026 drivers + joystick + ackermann_mux (VESC odom TF off: EKF owns it)
 #   ./race.sh ekf [color]               D435i IMU + robot_localization EKF (color: also the RGB stream)
-#   ./race.sh reactive [scale]          race_core follow-the-gap (Plan B), deadman = RB
+#   ./race.sh ftg [scale]               race_core follow-the-gap (iv2026 planner x scale), deadman = RB
 #   ./race.sh map                       slam_toolbox mapping on EKF odometry (drive 1-2 laps, close the loop)
 #   ./race.sh savemap NAME              save the map to ~/maps/NAME.{yaml,png}
 #   ./race.sh plan NAME [max_steer]     raceline + centerline into ~/maps/NAME_lines/ (look at raceline.png)
-#   ./race.sh race NAME [scale] [line]  race_core on the map; line = raceline (default) or centerline
+#   ./race.sh race NAME [scale] [solo|h2h] [raceline|centerline]
+#                                       race_core on the map. solo = time trial (no trailing/overtaking),
+#                                       h2h = 1v1 (trail + spline overtake of slower cars)
+#   ./race.sh ftgmap NAME [scale]       follow-the-gap laps on the map (localized, laps timed) for comparison
+#   ./race.sh drive raceline|ftg        switch race_core's driving live (same map, same lap counter)
 #   ./race.sh scale 0.6                 change race_core's speed scale live (raceline mode)
+#   ./race.sh rscale 0.8                change the follow-the-gap speed scale live
+#   ./race.sh ftgset key value          change one follow-the-gap parameter live (e.g. distance_max_speed 5.0)
+#   ./race.sh joywatch                  restart the joystick driver whenever it dies (part of 'up')
 #   ./race.sh relocalize                global re-localization (car somewhere on the track, not at the start)
 #   ./race.sh detector                  DPU car detector on the camera (needs: ./race.sh ekf color)
 #   ./race.sh record TAG [images]       rosbag of everything race_core needs (+ camera images if 'images')
@@ -27,14 +41,21 @@ W="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 MAPS="${MAPS:-$HOME/maps}"
 BAGS="${BAGS:-$HOME/bags}"
 set +u
+BLAZE="${BLAZE:-$HOME/blaze_racer}"
+[ -d "$BLAZE/subsystem_ws/install" ] || BLAZE="$HOME/airacer_basecode/blaze_racer"
 source /opt/ros/humble/setup.bash
-[ -f "$HOME/airacer_basecode/blaze_racer/subsystem_ws/install/setup.bash" ] && \
-  source "$HOME/airacer_basecode/blaze_racer/subsystem_ws/install/setup.bash"
-[ -f "$HOME/airacer_basecode/blaze_racer/autonomy_ws/install/setup.bash" ] && \
-  source "$HOME/airacer_basecode/blaze_racer/autonomy_ws/install/setup.bash"
+[ -f "$BLAZE/subsystem_ws/install/setup.bash" ] && source "$BLAZE/subsystem_ws/install/setup.bash"
+[ -f "$BLAZE/autonomy_ws/install/setup.bash" ] && source "$BLAZE/autonomy_ws/install/setup.bash"
 source "$W/race_ws/install/setup.bash"
 set -u
 cmd="${1:-help}"; shift || true
+# Race-day deltas on top of the team's follow_the_gap params.yaml (which stays untouched), = run 6 of
+# 11/06 ("awesome run, great turns on full right and full left"; logs/RUNS.md):
+# - 0.50 rad steering instead of 0.349: the 0.349 cap means a 0.91 m minimum turning radius, and the
+#   car hit the walls in the 0.81 m wide turns on 11/06 (the iv2026 servo calibration reaches ~0.53 rad)
+# - top speed 5.0 m/s (was 4.5) reached at 4.0 m of front clearance (was 5.0): faster short straights
+# Speed scale: x1.0 by default; x1.1 was clean on the oval, x1.2 hit walls on a tight figure 8.
+FTG_SET="${FTG_SET-max_steer=0.50,dist_max_speed=4.0,distance_max_speed=5.0}"
 
 case "$cmd" in
   check)
@@ -59,16 +80,44 @@ case "$cmd" in
     printf '%-36s %s C\n' "SoC temperature" "$(echo "$temps" | awk 'NF {if ($1 > m) m = $1} END {printf "%.1f", m/1000}')"
     echo "expected: /scan ~40, /odom ~50, /joy ~20 (pad connected), imu ~200, EKF ~100, color camera_info ~30 Hz"
     ;;
+  up)
+    tmux has-session -t car 2>/dev/null && { echo "tmux session 'car' already running (./race.sh down first)"; exit 1; }
+    mkdir -p "$HOME/race_logs"
+    win() { tmux new-window -t car -n "$1" "bash -lc \"cd $W && ./race.sh $2 2>&1 | tee -a $HOME/race_logs/$1_\$(date +%m%d_%H%M).log; exec bash\""; }
+    tmux new-session -d -s car -n bringup "bash -lc \"cd $W && ./race.sh bringup 2>&1 | tee -a $HOME/race_logs/bringup_\$(date +%m%d_%H%M).log; exec bash\""
+    sleep 10; win ekf "ekf color"; sleep 8; win joy joywatch; win core "ftg ${FTG_SCALE:-1.0}"
+    [[ "${1:-}" == "det" ]] && { sleep 6; win det detector; }
+    echo "started: tmux attach -t car   (windows: $(tmux list-windows -t car -F '#W' | tr '\n' ' '))" ;;
+  down)
+    for w in $(tmux list-windows -t car -F '#W' 2>/dev/null); do tmux send-keys -t "car:$w" C-c; done
+    sleep 5; tmux kill-session -t car 2>/dev/null; echo "stopped" ;;
+  joywatch)
+    # SDL2 joy_node segfaulted once when the 8BitDo reconnected after sleeping (11/06): start a new one
+    # whenever none is running. pgrep -x matches the process name only, not this loop's command line.
+    cfg="$(ros2 pkg prefix subsystem_stack)/share/subsystem_stack/config/joy_teleop.yaml"
+    while true; do
+      if ! pgrep -x joy_node >/dev/null; then
+        echo "$(date +%T) no joy_node running: starting one"
+        ros2 run joy joy_node --ros-args -r __node:=joy --params-file "$cfg" || true
+      fi
+      sleep 1
+    done ;;
+  ftgset)
+    exec ros2 param set /race_core "ftg_iv.${1:?parameter, e.g. distance_max_speed}" "${2:?value}" ;;
   bringup)
-    exec ros2 launch subsystem_stack bringup_launch.py ;;
+    exec ros2 launch race_core bringup.launch.py ;;
   ekf)
     color=false; [[ "${1:-}" == "color" ]] && color=true
     exec ros2 launch race_core state_estimation.launch.py color:=$color ;;
-  reactive)
-    exec ros2 launch race_core race_core.launch.py mode:=reactive reactive_speed_scale:="${1:-0.8}" ;;
+  ftg|reactive)
+    exec ros2 launch race_core race_core.launch.py mode:=reactive reactive_speed_scale:="${1:-1.0}" \
+      ftg_set:="$FTG_SET" ;;
   map)
-    echo "Start with the car ON THE START LINE facing the race direction (that pose becomes map 0,0,0)."
-    exec ros2 launch slam_mapping slam_mapping.launch.py odom_source:=ekf ;;
+    echo "The car must be ON THE START LINE facing the race direction: that pose becomes map 0,0,0."
+    echo "Resetting the EKF pose to 0 ..."
+    ros2 topic pub --once -w 1 /set_pose geometry_msgs/msg/PoseWithCovarianceStamped \
+      "{header: {frame_id: odom}, pose: {pose: {orientation: {w: 1.0}}}}" >/dev/null
+    exec ros2 launch race_core mapping.launch.py ;;
   savemap)
     mkdir -p "$MAPS"
     ros2 run nav2_map_server map_saver_cli -f "$MAPS/${1:?name}" --ros-args -p map_subscribe_transient_local:=true
@@ -79,12 +128,27 @@ case "$cmd" in
       --max-steer "${2:-0.40}"
     echo "check: $MAPS/${n}_lines/raceline.png" ;;
   race)
-    n="${1:?name}"; line="${3:-raceline}"
-    echo "Put the car on the start line (map origin) facing the race direction, then hold RB."
+    n="${1:?name}"; fmt="${3:-solo}"; line="${4:-raceline}"
+    case "$fmt" in
+      solo) trail=false; ot=none ;;
+      h2h)  trail=true;  ot=spline ;;
+      *) echo "format is solo or h2h"; exit 1 ;;
+    esac
+    echo "Put the car on the start line (map origin) facing the race direction, then hold RB. ($fmt)"
     exec ros2 launch race_core race_core.launch.py mode:=race map:="$MAPS/$n.yaml" \
-      raceline:="$MAPS/${n}_lines/$line.csv" speed_scale:="${2:-0.4}" ;;
+      raceline:="$MAPS/${n}_lines/$line.csv" speed_scale:="${2:-0.4}" trail:=$trail overtake:=$ot \
+      ftg_set:="$FTG_SET" ;;
+  ftgmap)
+    n="${1:?name}"
+    exec ros2 launch race_core race_core.launch.py mode:=race drive_mode:=ftg map:="$MAPS/$n.yaml" \
+      raceline:="$MAPS/${n}_lines/raceline.csv" reactive_speed_scale:="${2:-1.0}" trail:=false \
+      ftg_set:="$FTG_SET" ;;
+  drive)
+    exec ros2 param set /race_core drive_mode "${1:?raceline or ftg}" ;;
   scale)
     exec ros2 param set /race_core speed_scale "${1:?scale, e.g. 0.6}" ;;
+  rscale)
+    exec ros2 param set /race_core reactive_speed_scale "${1:?scale, e.g. 0.8}" ;;
   relocalize)
     exec ros2 service call /race_core/global_localization std_srvs/srv/Trigger ;;
   detector)
@@ -110,5 +174,5 @@ case "$cmd" in
     ROS_DOMAIN_ID=77 ROS_LOCALHOST_ONLY=1 exec ros2 launch race_core sim.launch.py map:="$MAPS/$n.yaml" \
       raceline:="$MAPS/${n}_lines/raceline.csv" speed_scale:="${2:-0.5}" ;;
   *)
-    sed -n '2,26p' "$0" ;;
+    sed -n '2,40p' "$0" ;;
 esac

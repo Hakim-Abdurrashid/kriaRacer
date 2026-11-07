@@ -25,7 +25,7 @@ find_package(OpenMP REQUIRED)
 
 # ROS-free modules (unit-tested without ROS)
 add_library(race_core_lib
-  src/follow_gap.cpp src/occupancy_map.cpp src/particle_filter.cpp src/raceline.cpp
+  src/follow_gap.cpp src/follow_gap_iv.cpp src/occupancy_map.cpp src/particle_filter.cpp src/raceline.cpp
   src/controller.cpp src/opponent.cpp src/overtake.cpp)
 target_include_directories(race_core_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -48,7 +48,7 @@ target_link_libraries(ftg_replay race_core_lib)
 
 install(TARGETS race_core_node race_sim ftg_replay DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS tools/make_raceline.py tools/ftg_parity.py tools/lap_report.py tools/sim_eval.sh
-  tools/calib_report.py
+  tools/calib_report.py tools/ftg_iv_parity.py
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch config rviz DESTINATION share/${PROJECT_NAME})
