@@ -245,7 +245,7 @@ Every run is in [`logs/RUNS.md`](logs/RUNS.md).
 | [`tools/`](tools) | Bag and log analysis (stints, laps, emergency brakes, wall clearance, where the bubble lands, the explainer's lap data) and the README figure renderer |
 | [`maps/`](maps) | Track maps and racing lines from mapping runs |
 | [`logs/RUNS.md`](logs/RUNS.md) | The run sheet: every track run with its settings and results |
-| [`docs/`](docs) | The interactive explainer page and the README figures |
+| [`docs/`](docs) | The interactive explainer page and the README figures; the project's original directive ([`project_directive.md`](docs/project_directive.md)) and first notes |
 | [`RACE_PLAN.md`](RACE_PLAN.md), [`WORKFLOW.md`](WORKFLOW.md), [`TEST_DAY.md`](TEST_DAY.md) | The race plan and decision log, the engineering workflow, the track-session runbook |
 | [`research/`](research) | Benchmarks behind the plan (DPU, ROS 2 latency, lap-time model) |
 
