@@ -20,6 +20,26 @@ EKF (D435i gyro), race_core. FTG = iv2026 planner (C++ port, team params.yaml) u
 | 7 | 00:21 | FTG x1.1, CW then CCW (oval) | run 6 x1.1 (corners 2.2, top 5.5 m/s) | CW 10 laps 3.30-3.33 m/s; CCW 7 laps 4.96-5.09 s, **3.40 m/s**. User: "clean". AEB about once per lap at one apex (TTC 0-0.04 s, no contact seen) | `1107_050227_ceiling` |
 | 8 | 00:40 | FTG x1.2, tight figure 8 | run 6 x1.2, reactive AEB off | stints 3.44-3.80 m/s, top 5.7 m/s, good on straights without slipping, **hit the wall a few times**: ceiling is between x1.1 and x1.2 on narrow tracks | `1107_050227_ceiling` |
 
+## 2026-11-07 race day (permanent race track, clockwise, ~39 m laps by wheel odometry)
+
+| # | Time (EST) | Mode | Settings | Result | Bag |
+|---|---|---|---|---|---|
+| 9 | 16:13 | FTG x1.0, CW | run 6 settings (`./race.sh up det`) | stint 1: 10.16 / 11.56 s; stint 2: 11.26 / 11.72 / 11.79 s; 3.3 m/s mean, 5.2 max; 0 AEB. Closest real wall (raw lidar): 0.30-0.47 m. User: "awesome, the speed was great, no slips" | `1107_211154_rd_prac1` (recorder died 16:15: an analysis script read its sqlite file while recording) |
+| 10 | 16:19-16:26 | FTG x1.1, CW | run 6 x1.1 (live `rscale 1.1`) | 3 stints: 10.21 / 11.31 / 11.32, 10.17 / 11.31 / 11.31, 10.87 / 11.34 s; 3.45-3.53 m/s; 0 AEB. User: "performed awesome" | not recorded (see run 9) |
+| 11 | 16:45 | FTG x1.0, 1v1 practice with another team | run 6 x1.0 | two short stints (7.2 s, 5.6 s), no full laps; 3 AEB in the first (other car close ahead); detector saw the car in some frames | `1107_213514_rd_1v1prac` |
+
+| 12 | 17:51 | **Timed trial** (race), x1.0 | run 6 settings, fresh boot after a battery swap | 8 loops of ~10 m in 31.8 s (small layout), best 3.34 s, 2.8 m/s mean, 0 AEB. User: "awesome time trial" | `1107_224655_trial2` |
+| 13 | 18:12-18:15 | **1v1** (race), x1.0 | same boot as 12, battery 11.9 V | 1 lap 8.93 s and 1 lap 8.83 s (~31 m), each ending in an AEB at the same spot (start area); then 4 clean laps 10.46 / 11.50 / 11.63 / 11.69 s (~40 m) | `1107_230015_race1v1` |
+| 14 | 18:39-18:56 | **1v1** (race), x1.0 | new battery (12.7 V) | 14 full laps 10.39-13.09 s (clean laps 11.2-12.0 s), 13 AEB at 1-3 m/s, nearly all in the start/finish area (other car / marker), no wall crashes reported | `1107_233653_race3` (no metadata.yaml: power cut, `ros2 bag reindex`) |
+| 15 | 19:09 | race (mode per user), x1.0 | battery 12.2 V | connection lost 19:17 before any lap report; car offline afterwards | `race4` (on the KR260) |
+
+**Result: 1st place of 7 cars** (user, after the race).
+
+Race plan (user, 11/07): timed trial = x1.1, 1v1 = x1.0 (`./race.sh rscale 1.1|1.0`). The timed trial and the 1v1 heats were raced at x1.0.
+Finding: iv2026 FTG's bubble centres on the car's own lidar return (11/07: -127 deg, 0.11 m, 91% of scans; 11/06 runs 5-6:
++115..+125 deg, 98-100%); the rest are returns within 11 cm of the sensor. The car is steered by the 50 deg openness window.
+Explainer: `README.md` (figures in `docs/img`, rendered by `tools/readme_figures.py`) and the interactive page `docs/inside-blaze-racer.html`.
+
 Race-day configuration (tested cold-start 11/07 01:5x): `./race.sh up` (add `det` for the DPU detector) =
 iv2026 drivers + EKF + joystick watchdog + race_core follow-the-gap with run 6 settings at x1.0; `./race.sh rscale 1.1`
 for more speed, `./race.sh ftgset KEY VALUE` for single parameters, `./race.sh down` to stop. Laps print as
