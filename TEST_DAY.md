@@ -1,6 +1,6 @@
 # Test Day Runbook: KR260 in the car (first written for Sunday 2026-10-25)
 
-> **Status 2026-10-26:** §0 (bench bring-up) is done on the KR260; details and open items are in `KR260_STATUS.md`. Final checks the same evening (joystick chain on a virtual pad, full race load, mapping, planner and sim) passed; two joystick fixes and a `race.sh check` fix came out of them. Before the track: solder the LiDAR wire, then start at §1. Claude runs on the RTX box (`ssh claude@100.105.87.85`, `tmux attach -t race`) and reaches the car with `ssh kr260`.
+> **Status 2026-10-26:** §0 (bench bring-up) is done on the KR260; details and open items are in `KR260_STATUS.md`. Final checks the same evening (joystick chain on a virtual pad, full race load, mapping, planner and sim) passed; two joystick fixes and a `race.sh check` fix came out of them. Before the track: solder the LiDAR wire, then start at §1. Claude runs on the RTX box (`ssh claude@<rtx-box>`, where `<rtx-box>` is its Tailscale address; `tmux attach -t race`) and reaches the car with `ssh kr260`.
 
 This is the step-by-step for the first live session on the KR260. Each step lists the command, what you should see, and what to do if you don't. Do the steps in order; stop and tell Claude at the first failure (paste the terminal output).
 
@@ -49,7 +49,7 @@ Use whichever works:
 
 - **(a) From the RTX box (always on).** It holds a bundle prepared tonight:
   ```
-  scp claude@100.105.87.85:~/kr260_bundle.tgz ~ && tar -xzf ~/kr260_bundle.tgz -C ~
+  scp claude@<rtx-box>:~/kr260_bundle.tgz ~ && tar -xzf ~/kr260_bundle.tgz -C ~
   ```
   This creates `~/2x1_w` and `~/airacer_basecode/blaze_racer`. Use the claude password you set.
 - **(b) From GitHub,** if you pushed `2x1_w` (see `GIT_PUSH.md`).
@@ -367,7 +367,7 @@ You can list several triples in the same array; the change applies live.
 - The maps in `~/maps/`.
 - The `./race.sh report` tables.
 
-A copy can go to the RTX box with `rsync -a ~/bags ~/maps claude@100.105.87.85:~/from_car/`.
+A copy can go to the RTX box with `rsync -a ~/bags ~/maps claude@<rtx-box>:~/from_car/`.
 
 **Quick numbers to note:**
 

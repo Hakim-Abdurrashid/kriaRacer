@@ -57,7 +57,7 @@ echo /usr/lib/python3.10/site-packages > /usr/lib/python3/dist-packages/vart.pth
 echo "firmware: /usr/lib/dpu.xclbin" > /etc/vart.conf
 
 log "5. Cleanup of Kria-PYNQ side effects"
-# Jupyter listens on :9090 with the default password 'xilinx' - not on a race car.
+# Jupyter listens on :9090 with the PYNQ default password - not on a race car.
 systemctl disable --now jupyter.service 2>/dev/null || true
 # PYNQ's clear_pl_statefile.service Requires= jupyter, which started it anyway at boot (and on the
 # KR260 it timed out after 90 s). A drop-in cannot remove Requires=, so override the whole unit

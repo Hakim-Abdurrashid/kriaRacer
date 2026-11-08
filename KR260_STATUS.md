@@ -1,6 +1,6 @@
 # KR260 status (updated 2026-10-26, overnight)
 
-Race board: `ssh kr260` = `ubuntu@100.93.28.26` (Tailscale node `kriakr`, hostname `kria`). Wi-Fi "AI Racer" via a BrosTrend dongle (the one from the KV260, `wlxc83a35cc01d8`, 192.168.1.146). Claude runs on the RTX box (`claude` account, tmux session `race`).
+Race board: `ssh kr260` (an SSH alias for the board's Tailscale address, user `ubuntu`, hostname `kria`). Wi-Fi via a BrosTrend dongle (the one from the KV260). Claude runs on the RTX box (`claude` account, tmux session `race`).
 
 ## Ready and verified on the KR260
 | Item | Result |

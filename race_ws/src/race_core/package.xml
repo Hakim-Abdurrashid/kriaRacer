@@ -4,7 +4,7 @@
   <name>race_core</name>
   <version>0.2.0</version>
   <description>Single-process C++ race stack for the KR260 F1Tenth car (see RACE_PLAN.md).</description>
-  <maintainer email="hakimabd@ucf.edu">airacer-ucf</maintainer>
+  <maintainer email="162640038+Hakim-Abdurrashid@users.noreply.github.com">airacer-ucf</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
