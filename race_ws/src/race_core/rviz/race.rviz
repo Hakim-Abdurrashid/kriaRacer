@@ -1,0 +1,78 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Reference Frame: map
+      Cell Size: 1
+      Plane Cell Count: 30
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Name: Map
+      Topic:
+        Value: /map
+        Durability Policy: Transient Local
+      Value: true
+    - Class: rviz_default_plugins/Path
+      Name: Raceline
+      Topic:
+        Value: /race_core/raceline
+        Durability Policy: Transient Local
+      Color: 0; 170; 255
+      Value: true
+    - Class: rviz_default_plugins/PoseArray
+      Name: Particles
+      Topic:
+        Value: /race_core/particles
+      Color: 255; 25; 0
+      Arrow Length: 0.15
+      Value: true
+    - Class: rviz_default_plugins/Pose
+      Name: Pose
+      Topic:
+        Value: /race_core/pose
+      Color: 0; 255; 0
+      Shaft Length: 0.4
+      Value: true
+    - Class: rviz_default_plugins/PointStamped
+      Name: Lookahead
+      Topic:
+        Value: /race_core/lookahead
+      Color: 255; 255; 0
+      Radius: 0.08
+      Value: true
+    - Class: rviz_default_plugins/LaserScan
+      Name: Scan
+      Topic:
+        Value: /scan
+        Reliability Policy: Best Effort
+      Size (m): 0.04
+      Color Transformer: FlatColor
+      Color: 255; 0; 255
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Value: false
+    - Class: rviz_default_plugins/Image
+      Name: DPU detections
+      Topic:
+        Value: /perception/debug_image
+      Value: false
+  Global Options:
+    Fixed Frame: map
+  Tools:
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Value: /initialpose
+    - Class: rviz_default_plugins/MoveCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Current View
+      Scale: 40
+Window Geometry:
+  Width: 1200
+  Height: 800

@@ -1,0 +1,5 @@
+Race Day = 11/07/2026
+Number of Race Contestants = 7
+
+Race Format = Two race contestants will place their vehicles next to each other at the start line, both vehicles will start at the same time and traverse a F1Tenth track, the race duration will be 60 seconds, the number of times a vehicle crosses the start line after the race begins will be counted, after the race duration, the vehicle with the highest amount of times passing the start line will win
+

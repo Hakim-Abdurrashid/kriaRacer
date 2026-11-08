@@ -1,10 +1,10 @@
 connect to kri command:
-ssh ubuntu@192.168.1.146
-then enter "airacerucf" as the password
+ssh ubuntu@<kria-ip>
+then enter the ubuntu password (removed from the public repo; ask the team)
 
-kria ip on isreal's router = 192.168.1.146
+kria ip = (removed from the public repo; ask the team)
 kria username = ubuntu
-ubuntu user pass = airacerucf 
+ubuntu user pass = (removed from the public repo)
 
 To connect to kri remotely message hakim for the tailscale machine share link
 

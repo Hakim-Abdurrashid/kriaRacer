@@ -1,0 +1,9 @@
+computer = KR260
+Sensor 1 = hokuyo UST-10LX
+Sensor 2 = Intel RealSense Depth Camera D415 OR Intel RealSense Tracking Camera T265
+Electronic Speed Controller = autoro aesc v6.7
+Power Distribution Board
+Powerful Motor
+Powerful Servo
+Battery = 3 cell series 11.1V 25C sustained 50C burst 2C charge lipo
+Vehicle

@@ -1,0 +1,64 @@
+# Odometry EKF (robot_localization), RACE_PLAN.md §5.2.
+# Fuses VESC wheel speed (forward velocity) with the D435i gyro (yaw rate) and publishes
+# odom -> base_link. Replaces slam_mapping's cmd_odometry. The VESC must NOT publish that TF
+# (vesc.yaml: vesc_to_odom_node.publish_tf: false - already the case).
+ekf_filter_node:
+  ros__parameters:
+    frequency: 100.0
+    sensor_timeout: 0.1
+    two_d_mode: true
+    publish_tf: true
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+
+    # VESC odometry (vesc_to_odom): trust forward speed; lateral speed is reported as 0, which
+    # encodes the no-sideslip assumption. Yaw rate from the servo command is ignored - the
+    # gyro is far better.
+    #            x      y      z      roll   pitch  yaw
+    #            vx     vy     vz     vroll  vpitch vyaw
+    #            ax     ay     az
+    odom0: /odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, false,
+                   false, false, false]
+    odom0_queue_size: 10
+    odom0_differential: false
+
+    # D435i gyro (realsense2_camera, unite_imu_method linear interpolation). Accelerometer is
+    # excluded on purpose: too noisy on a vibrating chassis (ForzaETH found the same).
+    # robot_localization reads this vector in the MESSAGE frame (camera_imu_optical_frame: x right,
+    # y down, z forward), so "vyaw" alone would be the car's roll rate. Enable all three angular
+    # rates; after the TF rotation to base_link, two_d_mode keeps only the car's yaw rate. This also
+    # stays right if the camera is mounted tilted. (Verified on the KV260 with debug output: the
+    # transformed update vector has vyaw set.)
+    imu0: /camera/camera/imu
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  true,  true,  true,
+                  false, false, false]
+    imu0_queue_size: 50
+    imu0_differential: false
+    imu0_remove_gravitational_acceleration: true
+
+    # Process noise: allow quick changes in speed and yaw rate (racing, not a warehouse robot).
+    # all entries must be floats: a ROS 2 parameter array may not mix 0 and 0.05
+    process_noise_covariance: [0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.06, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.03, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.06, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.04, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
+                               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.015]
